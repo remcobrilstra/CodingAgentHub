@@ -82,6 +82,13 @@ function extractFirstUserPrompt(entries: Array<Record<string, unknown>>): string
   return null
 }
 
+function getSessionSummary(filePath: string, sourceSessionId: string): string {
+  const entries = readJsonl(filePath)
+  const normalized = extractFirstUserPrompt(entries)
+  if (normalized) return normalized
+  return `Copilot session ${sourceSessionId.substring(0, 8)}`
+}
+
 function stringifyAssistantResponseSegments(value: unknown): string {
   if (!Array.isArray(value)) return ''
   const parts: string[] = []
@@ -257,7 +264,7 @@ export const githubCopilotAdapter: AgentAdapter = {
         timestamp: stat.mtime.toISOString(),
         mtimeMs: stat.mtimeMs,
         cwd: resolvedPath,
-        summary: `Copilot session ${sourceSessionId.substring(0, 8)}`,
+        summary: getSessionSummary(filePath, sourceSessionId),
         subagents: [],
       })
     }

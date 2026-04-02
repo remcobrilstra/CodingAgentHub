@@ -1,4 +1,4 @@
-export type AgentSource = 'claude' | 'github-copilot'
+export type AgentSource = 'claude' | 'github-copilot' | 'codex-cli'
 
 export interface AdapterInfo {
   source: AgentSource

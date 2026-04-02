@@ -1,7 +1,7 @@
 # Coding Agent Hub
 
 ![screenshot](./content/screenshot.png)
-Coding Agent Hub is an Electron + TypeScript desktop app giving you some insights into the session you have had with different agents. It currently supports both GitHub Copilot and Claude Code.
+Coding Agent Hub is an Electron + TypeScript desktop app giving you some insights into the session you have had with different agents. It currently supports GitHub Copilot, Claude Code, and Codex CLI.
 The app allows you to simply open project folders in vscode
 
 **warning** this is very much a experimenal app, it will have bugs, mostly sharing because I found it quite useful others may feel the same.
@@ -25,7 +25,6 @@ The app allows you to simply open project folders in vscode
 ## whats next
 
 - mac support
-- Codex cli
 - Gemini cli
 - what else ?
 

@@ -255,6 +255,7 @@ interface AppState {
   activeSession: Session | null
   activeResolvedPath: string | null
   activeSessionSourceFilter: 'all' | AgentSource
+  isProjectsLoading: boolean
 }
 
 const state: AppState = {
@@ -262,6 +263,7 @@ const state: AppState = {
   activeSession: null,
   activeResolvedPath: null,
   activeSessionSourceFilter: 'all',
+  isProjectsLoading: false,
 }
 
 window.openVscode = function (): void {
@@ -278,29 +280,83 @@ window.resumeSession = function (): void {
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
+function setProjectsRefreshLoading(isLoading: boolean): void {
+  const refreshBtn = document.getElementById('projects-refresh-btn') as HTMLButtonElement | null
+  if (!refreshBtn) return
+
+  refreshBtn.disabled = isLoading
+  refreshBtn.classList.toggle('loading', isLoading)
+  refreshBtn.setAttribute('aria-busy', String(isLoading))
+
+  const label = refreshBtn.querySelector('.projects-refresh-label')
+  if (label) {
+    label.textContent = isLoading ? 'Refreshing...' : 'Refresh'
+  }
+}
+
+function clearProjectSelection(): void {
+  state.activeProject = null
+  state.activeSession = null
+  state.activeResolvedPath = null
+  document.getElementById('resume-btn')!.classList.add('disabled')
+
+  const pathBar = document.getElementById('path-bar')!
+  pathBar.classList.remove('visible')
+
+  const sessionsList = document.getElementById('sessions-list')!
+  sessionsList.innerHTML = `
+    <div class="empty-state">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18M3 12h18M3 17h12"/></svg>
+      <p>Select a project to view sessions</p>
+    </div>
+  `
+  document.getElementById('sessions-count')!.textContent = '–'
+}
+
 async function loadProjects(): Promise<void> {
-  const projects = await window.api.getProjects()
-  const list = document.getElementById('projects-list')!
-  const count = document.getElementById('projects-count')!
+  if (state.isProjectsLoading) return
+  state.isProjectsLoading = true
+  setProjectsRefreshLoading(true)
+  try {
+    const projects = await window.api.getProjects()
+    const list = document.getElementById('projects-list')!
+    const count = document.getElementById('projects-count')!
+    let selectedProject: Project | null = null
+    let selectedProjectEl: HTMLElement | null = null
 
-  count.textContent = String(projects.length)
-  list.innerHTML = ''
+    count.textContent = String(projects.length)
+    list.innerHTML = ''
 
-  for (const p of projects) {
-    const el = document.createElement('div')
-    el.className = 'project-item'
-    el.dataset.name = p.name
-    const pathDisplay = p.resolvedPath ?? p.name
-    el.innerHTML = `
-      <div class="project-item-icon">${projectInitial(p.displayName ?? p.name)}</div>
-      <div class="project-item-body">
-        <div class="project-item-name" title="${escapeHtml(pathDisplay)}">${escapeHtml(p.displayName ?? p.name)}</div>
-        <div class="project-item-path" title="${escapeHtml(pathDisplay)}">${escapeHtml(pathDisplay)}</div>
-        <div class="project-item-meta">${p.sessionCount} session${p.sessionCount !== 1 ? 's' : ''}</div>
-      </div>
-    `
-    el.addEventListener('click', () => selectProject(p, el))
-    list.appendChild(el)
+    for (const p of projects) {
+      const el = document.createElement('div')
+      el.className = 'project-item'
+      el.dataset.name = p.name
+      const pathDisplay = p.resolvedPath ?? p.name
+      el.innerHTML = `
+        <div class="project-item-icon">${projectInitial(p.displayName ?? p.name)}</div>
+        <div class="project-item-body">
+          <div class="project-item-name" title="${escapeHtml(pathDisplay)}">${escapeHtml(p.displayName ?? p.name)}</div>
+          <div class="project-item-path" title="${escapeHtml(pathDisplay)}">${escapeHtml(pathDisplay)}</div>
+          <div class="project-item-meta">${p.sessionCount} session${p.sessionCount !== 1 ? 's' : ''}</div>
+        </div>
+      `
+      el.addEventListener('click', () => selectProject(p, el))
+      list.appendChild(el)
+
+      if (state.activeProject === p.name) {
+        selectedProject = p
+        selectedProjectEl = el
+      }
+    }
+
+    if (selectedProject && selectedProjectEl) {
+      selectProject(selectedProject, selectedProjectEl)
+    } else if (state.activeProject) {
+      clearProjectSelection()
+    }
+  } finally {
+    state.isProjectsLoading = false
+    setProjectsRefreshLoading(false)
   }
 }
 
@@ -448,13 +504,14 @@ function aggregateTokens(messages: Message[]): ModelTokenStats[] {
   // Each streaming chunk shares the same message.id — keep only the last entry
   // per message.id so we get the final output_tokens count, not intermediate zeros.
   const lastPerMessage = new Map<string, { model: string; usage: NonNullable<NonNullable<Message['message']>['usage']> }>()
+  const fallbackCodexModel = 'gpt-?.?-codex'
 
   for (const msg of messages) {
     if (msg.type !== 'assistant') continue
-    const msgId = msg.message?.id
-    const model = msg.message?.model
+    const msgId = msg.message?.id ?? msg.uuid
+    const model = msg.message?.model || fallbackCodexModel
     const usage = msg.message?.usage
-    if (!msgId || !model || !usage) continue
+    if (!msgId || !usage) continue
     lastPerMessage.set(msgId, { model, usage })
   }
 
@@ -582,6 +639,10 @@ document.getElementById('session-kind-filter')!.addEventListener('change', (e) =
   state.activeSessionSourceFilter = value
   if (!state.activeProject) return
   loadSessions(state.activeProject)
+})
+
+document.getElementById('projects-refresh-btn')!.addEventListener('click', () => {
+  void loadProjects()
 })
 
 void loadSourceFilterOptions()

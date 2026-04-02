@@ -77,16 +77,46 @@ function getCwdFromProjectDir(projectPath: string): string | null {
   return null
 }
 
+function normalizeUserText(raw: string): string {
+  const stripped = raw
+    .replace(/<environment_context>[\s\S]*?<\/environment_context>/gi, '')
+    .replace(/<environment_info>[\s\S]*?<\/environment_info>/gi, '')
+    .replace(/<workspace_info>[\s\S]*?<\/workspace_info>/gi, '')
+    .replace(/<userMemory>[\s\S]*?<\/userMemory>/gi, '')
+    .replace(/<sessionMemory>[\s\S]*?<\/sessionMemory>/gi, '')
+    .replace(/<repoMemory>[\s\S]*?<\/repoMemory>/gi, '')
+    .replace(/<attachments>[\s\S]*?<\/attachments>/gi, '')
+    .replace(/<context>[\s\S]*?<\/context>/gi, '')
+    .replace(/<editorContext>[\s\S]*?<\/editorContext>/gi, '')
+    .replace(/<reminderInstructions>[\s\S]*?<\/reminderInstructions>/gi, '')
+    .trim()
+
+  const userRequest = stripped.match(/<userRequest>([\s\S]*?)<\/userRequest>/i)
+  const bestCandidate = userRequest?.[1]?.trim() || stripped
+
+  return bestCandidate
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function getFirstUserMessage(lines: string[]): string | null {
   for (const line of lines) {
     try {
       const obj = JSON.parse(line) as Message
       if (obj.type !== 'user' || !obj.message?.content) continue
       const content = obj.message.content
-      if (typeof content === 'string') return content.substring(0, 120)
+      if (typeof content === 'string') {
+        const normalized = normalizeUserText(content)
+        if (normalized) return normalized.substring(0, 120)
+        continue
+      }
       if (Array.isArray(content)) {
         const textBlock = content.find((c) => c.type === 'text')
-        if (textBlock?.type === 'text') return textBlock.text.substring(0, 120)
+        if (textBlock?.type === 'text') {
+          const normalized = normalizeUserText(textBlock.text)
+          if (normalized) return normalized.substring(0, 120)
+        }
       }
     } catch {
       // ignore invalid json lines

@@ -5,9 +5,10 @@ import { spawn } from 'child_process'
 import type { AdapterInfo, AgentSource, Message, SessionFilter } from './types'
 import { claudeAdapter } from './main/agents/claudeAdapter'
 import { githubCopilotAdapter } from './main/agents/githubCopilotAdapter'
+import { codexCliAdapter } from './main/agents/codexCliAdapter'
 import { CatalogService } from './main/services/catalogService'
 
-const adapters = [claudeAdapter, githubCopilotAdapter]
+const adapters = [claudeAdapter, githubCopilotAdapter, codexCliAdapter]
 const catalogService = new CatalogService(adapters)
 
 function createWindow(): void {
