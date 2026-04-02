@@ -44,37 +44,8 @@
   #app {
     display: grid;
     grid-template-columns: 240px 300px 1fr;
-    grid-template-rows: 48px 1fr;
+    grid-template-rows: 1fr;
     height: 100vh;
-  }
-
-  #header {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    gap: 12px;
-    -webkit-app-region: drag;
-  }
-
-  #header .logo {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--text-primary);
-  }
-
-  #header .logo svg {
-    color: var(--accent);
-  }
-
-  #header .subtitle {
-    color: var(--text-muted);
-    font-size: 12px;
   }
 
   /* ─── Panels ─── */
@@ -818,19 +789,6 @@
 </head>
 <body>
 <div id="app">
-  <!-- Header -->
-  <div id="header">
-    <div class="logo">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-        <path d="M2 17l10 5 10-5"/>
-        <path d="M2 12l10 5 10-5"/>
-      </svg>
-      Coding Agent Hub
-    </div>
-    <span class="subtitle">Session Browser</span>
-  </div>
-
   <!-- Projects Panel -->
   <div id="projects-panel">
     <div class="panel-header">
@@ -847,10 +805,8 @@
     <div class="panel-header">
       <div class="panel-header-main">
         <span>Sessions</span>
-        <select id="session-kind-filter" aria-label="Filter session kind">
-          <option value="all">All types</option>
-          <option value="session">Session</option>
-          <option value="agents">Agents</option>
+        <select id="session-kind-filter" aria-label="Filter sessions by adapter">
+          <option value="all">All</option>
         </select>
       </div>
       <span class="count" id="sessions-count">–</span>

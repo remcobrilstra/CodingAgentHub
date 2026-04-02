@@ -1,4 +1,4 @@
-import type { Project, Session, Message, ContentBlock, ToolResultBlock, ElectronAPI, ModelTokenStats, SessionFilter, SessionKind } from './types'
+import type { AdapterInfo, AgentSource, Project, Session, Message, ContentBlock, ToolResultBlock, ElectronAPI, ModelTokenStats, SessionFilter } from './types'
 
 declare const marked: { parse: (text: string) => string; use: (opts: object) => void }
 
@@ -254,14 +254,14 @@ interface AppState {
   activeProject: string | null
   activeSession: Session | null
   activeResolvedPath: string | null
-  activeSessionKindFilter: 'all' | SessionKind
+  activeSessionSourceFilter: 'all' | AgentSource
 }
 
 const state: AppState = {
   activeProject: null,
   activeSession: null,
   activeResolvedPath: null,
-  activeSessionKindFilter: 'all',
+  activeSessionSourceFilter: 'all',
 }
 
 window.openVscode = function (): void {
@@ -332,8 +332,28 @@ function selectProject(project: Project, el: HTMLElement): void {
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
 function buildSessionFilter(): SessionFilter | undefined {
-  if (state.activeSessionKindFilter === 'all') return undefined
-  return { kinds: [state.activeSessionKindFilter] }
+  if (state.activeSessionSourceFilter === 'all') return undefined
+  return { sources: [state.activeSessionSourceFilter] }
+}
+
+function renderSourceFilterOptions(adapters: AdapterInfo[]): void {
+  const filter = document.getElementById('session-kind-filter') as HTMLSelectElement
+  const currentValue = filter.value
+
+  const options = [
+    '<option value="all">All</option>',
+    ...adapters.map((adapter) => `<option value="${escapeHtml(adapter.source)}">${escapeHtml(adapter.displayName)}</option>`),
+  ]
+  filter.innerHTML = options.join('')
+
+  const nextValue = adapters.some((adapter) => adapter.source === currentValue) ? currentValue : 'all'
+  filter.value = nextValue
+  state.activeSessionSourceFilter = nextValue as 'all' | AgentSource
+}
+
+async function loadSourceFilterOptions(): Promise<void> {
+  const adapters = await window.api.getAdapters()
+  renderSourceFilterOptions(adapters)
 }
 
 async function loadSessions(projectName: string): Promise<void> {
@@ -558,10 +578,12 @@ document.getElementById('token-modal-close')!.addEventListener('click', hideToke
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTokenModal() })
 
 document.getElementById('session-kind-filter')!.addEventListener('change', (e) => {
-  const value = (e.target as HTMLSelectElement).value as 'all' | SessionKind
-  state.activeSessionKindFilter = value
+  const value = (e.target as HTMLSelectElement).value as 'all' | AgentSource
+  state.activeSessionSourceFilter = value
   if (!state.activeProject) return
   loadSessions(state.activeProject)
 })
 
-loadProjects()
+void loadSourceFilterOptions()
+  .catch(() => undefined)
+  .then(() => loadProjects())

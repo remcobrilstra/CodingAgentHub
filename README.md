@@ -14,15 +14,19 @@ The app allows you to simply open project folders in vscode
 - Get an overview of token consumption during the session
 
 ## Platform support
-
 - Windows only
+
+## known issues
+- sessions with sub-agents are rendered but not very nicely
+- the markdown rendering needs to be cleaned up
+- for Github copilot draft session (ie. nothing was ever submitted) show up in session list
+
 
 ## whats next
 
 - mac support
 - Codex cli
 - Gemini cli
-
 - what else ?
 
 ## Quick start

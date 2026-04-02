@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { spawn } from 'child_process'
-import type { AgentSource, Message, SessionFilter } from './types'
+import type { AdapterInfo, AgentSource, Message, SessionFilter } from './types'
 import { claudeAdapter } from './main/agents/claudeAdapter'
 import { githubCopilotAdapter } from './main/agents/githubCopilotAdapter'
 import { CatalogService } from './main/services/catalogService'
@@ -38,6 +38,15 @@ function launchDetached(command: string, args: string[], cwd?: string): void {
 }
 
 ipcMain.handle('get-projects', async () => catalogService.getProjects())
+
+ipcMain.handle('get-adapters', async (): Promise<AdapterInfo[]> => {
+  return adapters
+    .map((adapter) => ({
+      source: adapter.source,
+      displayName: adapter.displayName,
+    }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+})
 
 ipcMain.handle('get-sessions', async (_event, projectName: string, filter?: SessionFilter) => {
   return catalogService.getSessions(projectName, filter)

@@ -1,5 +1,10 @@
 export type AgentSource = 'claude' | 'github-copilot'
 
+export interface AdapterInfo {
+  source: AgentSource
+  displayName: string
+}
+
 export type SessionKind = 'session' | 'agents'
 
 export interface ProjectSourceRef {
@@ -132,6 +137,7 @@ export interface AgentAdapter {
 
 export interface ElectronAPI {
   getProjects: () => Promise<Project[]>
+  getAdapters: () => Promise<AdapterInfo[]>
   getSessions: (projectName: string, filter?: SessionFilter) => Promise<Session[]>
   getSessionMessages: (filePath: string, source?: AgentSource) => Promise<Message[]>
   openInVscode: (dirPath: string) => Promise<void>
