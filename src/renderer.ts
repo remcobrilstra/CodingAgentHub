@@ -1,4 +1,4 @@
-import type { AdapterInfo, AgentSource, Project, Session, Message, ContentBlock, ToolResultBlock, ElectronAPI, ModelTokenStats, SessionFilter } from './types'
+import type { AdapterInfo, AgentSource, Project, Session, Message, ContentBlock, ToolResultBlock, ElectronAPI, ModelTokenStats, ProjectTokenOverview, SessionFilter } from './types'
 
 declare const marked: { parse: (text: string) => string; use: (opts: object) => void }
 
@@ -536,54 +536,118 @@ function fmtTokens(n: number): string {
   return String(n)
 }
 
+function totalModelTokens(model: ModelTokenStats): number {
+  return model.inputTokens + model.outputTokens + model.cacheCreationInputTokens + model.cacheReadInputTokens
+}
+
+function setTokenModalTitle(title: string): void {
+  const titleEl = document.getElementById('token-modal-title')
+  if (titleEl) titleEl.textContent = title
+}
+
+function renderTokenTable(stats: ModelTokenStats[]): string {
+  const totalIn = stats.reduce((s, m) => s + m.inputTokens + m.cacheReadInputTokens + m.cacheCreationInputTokens, 0)
+  const totalOut = stats.reduce((s, m) => s + m.outputTokens, 0)
+
+  return `
+    <table class="token-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Input</th>
+          <th>Cache Read</th>
+          <th>Cache Write</th>
+          <th>Output</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${stats.map((m) => `
+          <tr>
+            <td class="model-cell">${escapeHtml(m.model)}</td>
+            <td>${fmtTokens(m.inputTokens)}</td>
+            <td class="cache">${fmtTokens(m.cacheReadInputTokens)}</td>
+            <td class="cache">${fmtTokens(m.cacheCreationInputTokens)}</td>
+            <td class="output">${fmtTokens(m.outputTokens)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td><strong>Total</strong></td>
+          <td colspan="3"><strong>${fmtTokens(totalIn)}</strong> in (incl. cache)</td>
+          <td><strong>${fmtTokens(totalOut)}</strong> out</td>
+        </tr>
+      </tfoot>
+    </table>
+  `
+}
+
 // ─── Token Modal ──────────────────────────────────────────────────────────────
 
 let currentTokenStats: ModelTokenStats[] = []
 
-function showTokenModal(): void {
+function showSessionTokenModal(): void {
   const modal = document.getElementById('token-modal')!
   const body = document.getElementById('token-modal-body')!
-
-  const totalIn = currentTokenStats.reduce((s, m) => s + m.inputTokens + m.cacheReadInputTokens + m.cacheCreationInputTokens, 0)
-  const totalOut = currentTokenStats.reduce((s, m) => s + m.outputTokens, 0)
+  setTokenModalTitle('Token Usage Breakdown')
 
   if (currentTokenStats.length === 0) {
     body.innerHTML = `<p style="color:var(--text-muted);text-align:center;padding:16px">No token usage data in this session</p>`
   } else {
-    body.innerHTML = `
-      <table class="token-table">
-        <thead>
-          <tr>
-            <th>Model</th>
-            <th>Input</th>
-            <th>Cache Read</th>
-            <th>Cache Write</th>
-            <th>Output</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${currentTokenStats.map((m) => `
-            <tr>
-              <td class="model-cell">${escapeHtml(m.model)}</td>
-              <td>${fmtTokens(m.inputTokens)}</td>
-              <td class="cache">${fmtTokens(m.cacheReadInputTokens)}</td>
-              <td class="cache">${fmtTokens(m.cacheCreationInputTokens)}</td>
-              <td class="output">${fmtTokens(m.outputTokens)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td><strong>Total</strong></td>
-            <td colspan="3"><strong>${fmtTokens(totalIn)}</strong> in (incl. cache)</td>
-            <td><strong>${fmtTokens(totalOut)}</strong> out</td>
-          </tr>
-        </tfoot>
-      </table>
-    `
+    body.innerHTML = renderTokenTable(currentTokenStats)
   }
 
   modal.classList.add('visible')
+}
+
+async function showProjectTokenModal(): Promise<void> {
+  if (!state.activeProject) return
+
+  const modal = document.getElementById('token-modal')!
+  const body = document.getElementById('token-modal-body')!
+  setTokenModalTitle('Project Token Overview')
+  body.innerHTML = '<div class="loading" style="height:auto;padding:16px 0"><div class="spinner"></div> Loading…</div>'
+  modal.classList.add('visible')
+
+  const overview = await window.api.getProjectTokenOverview(state.activeProject)
+  if (!overview || overview.agents.length === 0) {
+    body.innerHTML = `<p style="color:var(--text-muted);text-align:center;padding:16px">No sessions found for this project</p>`
+    return
+  }
+
+  body.innerHTML = renderProjectTokenOverview(overview)
+}
+
+function renderProjectTokenOverview(overview: ProjectTokenOverview): string {
+  const sections = overview.agents.map((agent) => {
+    const models = agent.models
+      .slice()
+      .sort((a, b) => totalModelTokens(b) - totalModelTokens(a) || a.model.localeCompare(b.model))
+
+    const totalAgentTokens = models.reduce((sum, model) => sum + totalModelTokens(model), 0)
+    const sessionLabel = `${agent.totalSessions} session${agent.totalSessions === 1 ? '' : 's'}`
+    const modelTable = models.length > 0
+      ? renderTokenTable(models)
+      : '<p style="color:var(--text-muted);padding:8px 0">No token telemetry available for this agent.</p>'
+
+    return `
+      <section class="project-token-agent">
+        <div class="project-token-agent-header">
+          <div class="project-token-agent-title">${escapeHtml(agent.sourceDisplayName)}</div>
+          <div class="project-token-agent-meta">
+            <span class="stat-pill">${sessionLabel}</span>
+            <span class="stat-pill">${fmtTokens(totalAgentTokens)} total tokens</span>
+          </div>
+        </div>
+        <div class="project-token-agent-note">
+          ${agent.sessionsWithTokenData} session${agent.sessionsWithTokenData === 1 ? '' : 's'} with token data, ${agent.sessionsWithoutTokenData} without token data.
+        </div>
+        ${modelTable}
+      </section>
+    `
+  })
+
+  return `<div class="project-token-overview">${sections.join('')}</div>`
 }
 
 function hideTokenModal(): void {
@@ -621,7 +685,7 @@ async function loadConversation(filePath: string, label: string, session: Sessio
     ${tokenHtml}
   `
 
-  document.getElementById('token-btn')?.addEventListener('click', showTokenModal)
+  document.getElementById('token-btn')?.addEventListener('click', showSessionTokenModal)
 
   renderMessages(messages, session)
 }
@@ -643,6 +707,10 @@ document.getElementById('session-kind-filter')!.addEventListener('change', (e) =
 
 document.getElementById('projects-refresh-btn')!.addEventListener('click', () => {
   void loadProjects()
+})
+
+document.getElementById('project-token-btn')!.addEventListener('click', () => {
+  void showProjectTokenModal()
 })
 
 void loadSourceFilterOptions()

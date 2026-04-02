@@ -53,6 +53,10 @@ ipcMain.handle('get-sessions', async (_event, projectName: string, filter?: Sess
   return catalogService.getSessions(projectName, filter)
 })
 
+ipcMain.handle('get-project-token-overview', async (_event, projectName: string) => {
+  return catalogService.getProjectTokenOverview(projectName)
+})
+
 ipcMain.handle('get-session-messages', async (_event, filePath: string, source?: AgentSource): Promise<Message[]> => {
   if (source) {
     const adapter = adapters.find((candidate) => candidate.source === source)

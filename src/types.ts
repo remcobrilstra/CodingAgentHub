@@ -96,6 +96,20 @@ export interface ModelTokenStats {
   cacheReadInputTokens: number
 }
 
+export interface AgentTokenOverview {
+  source: AgentSource
+  sourceDisplayName: string
+  totalSessions: number
+  sessionsWithTokenData: number
+  sessionsWithoutTokenData: number
+  models: ModelTokenStats[]
+}
+
+export interface ProjectTokenOverview {
+  projectName: string
+  agents: AgentTokenOverview[]
+}
+
 export interface Message {
   type: 'user' | 'assistant' | string
   uuid: string
@@ -139,6 +153,7 @@ export interface ElectronAPI {
   getProjects: () => Promise<Project[]>
   getAdapters: () => Promise<AdapterInfo[]>
   getSessions: (projectName: string, filter?: SessionFilter) => Promise<Session[]>
+  getProjectTokenOverview: (projectName: string) => Promise<ProjectTokenOverview | null>
   getSessionMessages: (filePath: string, source?: AgentSource) => Promise<Message[]>
   openInVscode: (dirPath: string) => Promise<void>
   resumeSession: (source: AgentSource, sourceSessionId: string, cwd: string | null) => Promise<void>

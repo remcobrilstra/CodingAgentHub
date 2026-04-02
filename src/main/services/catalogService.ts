@@ -1,5 +1,5 @@
 import path from 'path'
-import type { AgentAdapter, AgentSource, Project, Session, SessionFilter } from '../../types'
+import type { AgentAdapter, AgentSource, Message, ModelTokenStats, Project, ProjectTokenOverview, Session, SessionFilter } from '../../types'
 import { buildSessionId, normalizePathForKey } from '../agents/agentAdapter'
 
 interface MergedProjectAccumulator {
@@ -25,6 +25,55 @@ function pickDisplayName(current: string, candidate: string, resolvedPath: strin
   if (!resolvedPath) return current || candidate
   const base = path.basename(resolvedPath)
   return base || candidate || current
+}
+
+function toNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function aggregateModelTokens(messages: Message[]): ModelTokenStats[] {
+  const lastPerMessage = new Map<string, { model: string; usage: NonNullable<NonNullable<Message['message']>['usage']> }>()
+
+  for (const msg of messages) {
+    if (msg.type !== 'assistant') continue
+    const msgId = msg.message?.id ?? msg.uuid
+    const usage = msg.message?.usage
+    if (!msgId || !usage) continue
+
+    const usageTotal = toNumber(usage.input_tokens)
+      + toNumber(usage.output_tokens)
+      + toNumber(usage.cache_creation_input_tokens)
+      + toNumber(usage.cache_read_input_tokens)
+    if (usageTotal <= 0) continue
+
+    const model = msg.message?.model || 'unknown-model'
+    lastPerMessage.set(msgId, { model, usage })
+  }
+
+  const modelMap = new Map<string, ModelTokenStats>()
+  for (const { model, usage } of lastPerMessage.values()) {
+    if (!modelMap.has(model)) {
+      modelMap.set(model, {
+        model,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+      })
+    }
+
+    const stats = modelMap.get(model)!
+    stats.inputTokens += toNumber(usage.input_tokens)
+    stats.outputTokens += toNumber(usage.output_tokens)
+    stats.cacheCreationInputTokens += toNumber(usage.cache_creation_input_tokens)
+    stats.cacheReadInputTokens += toNumber(usage.cache_read_input_tokens)
+  }
+
+  return Array.from(modelMap.values())
+}
+
+function totalTokens(stats: ModelTokenStats): number {
+  return stats.inputTokens + stats.outputTokens + stats.cacheCreationInputTokens + stats.cacheReadInputTokens
 }
 
 export class CatalogService {
@@ -108,5 +157,97 @@ export class CatalogService {
     })
 
     return filtered.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  }
+
+  async getProjectTokenOverview(projectKey: string): Promise<ProjectTokenOverview | null> {
+    const sessions = await this.getSessions(projectKey)
+    if (sessions.length === 0) return null
+
+    const adapterMap = new Map(this.adapters.map((adapter) => [adapter.source, adapter]))
+    const perSource = new Map<AgentSource, {
+      source: AgentSource
+      sourceDisplayName: string
+      totalSessions: number
+      sessionsWithTokenData: number
+      sessionsWithoutTokenData: number
+      models: Map<string, ModelTokenStats>
+    }>()
+
+    for (const session of sessions) {
+      const adapter = adapterMap.get(session.source)
+      if (!adapter) continue
+
+      if (!perSource.has(session.source)) {
+        perSource.set(session.source, {
+          source: session.source,
+          sourceDisplayName: adapter.displayName,
+          totalSessions: 0,
+          sessionsWithTokenData: 0,
+          sessionsWithoutTokenData: 0,
+          models: new Map(),
+        })
+      }
+
+      const bucket = perSource.get(session.source)!
+      bucket.totalSessions += 1
+
+      if (!session.filePath) {
+        bucket.sessionsWithoutTokenData += 1
+        continue
+      }
+
+      let messages: Message[] = []
+      try {
+        messages = await adapter.getSessionMessages(session.filePath)
+      } catch {
+        bucket.sessionsWithoutTokenData += 1
+        continue
+      }
+
+      const sessionStats = aggregateModelTokens(messages)
+      if (sessionStats.length === 0) {
+        bucket.sessionsWithoutTokenData += 1
+        continue
+      }
+
+      bucket.sessionsWithTokenData += 1
+      for (const stat of sessionStats) {
+        if (!bucket.models.has(stat.model)) {
+          bucket.models.set(stat.model, {
+            model: stat.model,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationInputTokens: 0,
+            cacheReadInputTokens: 0,
+          })
+        }
+
+        const target = bucket.models.get(stat.model)!
+        target.inputTokens += stat.inputTokens
+        target.outputTokens += stat.outputTokens
+        target.cacheCreationInputTokens += stat.cacheCreationInputTokens
+        target.cacheReadInputTokens += stat.cacheReadInputTokens
+      }
+    }
+
+    const agents = Array.from(perSource.values())
+      .map((bucket) => ({
+        source: bucket.source,
+        sourceDisplayName: bucket.sourceDisplayName,
+        totalSessions: bucket.totalSessions,
+        sessionsWithTokenData: bucket.sessionsWithTokenData,
+        sessionsWithoutTokenData: bucket.sessionsWithoutTokenData,
+        models: Array.from(bucket.models.values()).sort((a, b) => totalTokens(b) - totalTokens(a) || a.model.localeCompare(b.model)),
+      }))
+      .sort((a, b) => {
+        const aTotal = a.models.reduce((sum, model) => sum + totalTokens(model), 0)
+        const bTotal = b.models.reduce((sum, model) => sum + totalTokens(model), 0)
+        return bTotal - aTotal || a.sourceDisplayName.localeCompare(b.sourceDisplayName)
+      })
+
+    return {
+      projectName: projectKey,
+      agents,
+    }
   }
 }
