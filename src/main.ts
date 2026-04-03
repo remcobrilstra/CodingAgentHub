@@ -1,12 +1,12 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import { spawn } from 'child_process'
 import type { AdapterInfo, AgentSource, Message, SessionFilter } from './types'
 import { claudeAdapter } from './main/agents/claudeAdapter'
 import { githubCopilotAdapter } from './main/agents/githubCopilotAdapter'
 import { codexCliAdapter } from './main/agents/codexCliAdapter'
 import { CatalogService } from './main/services/catalogService'
+import { openInCodeEditor } from './main/platform'
 
 const adapters = [claudeAdapter, githubCopilotAdapter, codexCliAdapter]
 const catalogService = new CatalogService(adapters)
@@ -26,16 +26,6 @@ function createWindow(): void {
     backgroundColor: '#0f1117',
   })
   win.loadFile(path.join(__dirname, '..', 'index.html'))
-}
-
-function launchDetached(command: string, args: string[], cwd?: string): void {
-  const child = spawn(command, args, {
-    cwd,
-    detached: true,
-    shell: false,
-    stdio: 'ignore',
-  })
-  child.unref()
 }
 
 ipcMain.handle('get-projects', async () => catalogService.getProjects())
@@ -72,7 +62,7 @@ ipcMain.handle('get-session-messages', async (_event, filePath: string, source?:
 
 ipcMain.handle('open-in-vscode', async (_event, dirPath: string): Promise<void> => {
   if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return
-  launchDetached('code', [dirPath])
+  openInCodeEditor(dirPath)
 })
 
 ipcMain.handle('resume-session', async (_event, source: AgentSource, sourceSessionId: string, cwd: string | null): Promise<void> => {

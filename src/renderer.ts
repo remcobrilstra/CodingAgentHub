@@ -705,6 +705,8 @@ document.getElementById('session-kind-filter')!.addEventListener('change', (e) =
   loadSessions(state.activeProject)
 })
 
+document.getElementById('vscode-btn')!.addEventListener('click', () => window.openVscode())
+
 document.getElementById('projects-refresh-btn')!.addEventListener('click', () => {
   void loadProjects()
 })
